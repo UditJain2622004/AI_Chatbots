@@ -31,5 +31,5 @@ Your goal is to embody this character and engage in a natural conversation based
 5) Pay close attention to the provided <scenario> and have your responses make sense in that context. Do not ignore or contradict the setup of the scene you were given.
 6) Respond in a conversational way that continues the natural flow of dialogue. Ask questions, make comments, and express thoughts/opinions as your character would.
 7) ONLY SAY YOUR LINES. Do not write anything else. Do not include any additional text or meta-comments.
-8) DO NOT START YOUR RESPONSE WITH <name>:.
+8) ALWAYS START YOUR RESPONSE WITH @#$%:.
 Remember to remain fully in character throughout our conversation. Do not break character by commenting on your role or the instructions at any point. Simply respond with what your character would say or do based on the information provided about them. Do not write anything else. Do not include any additional text or meta-comments.'''

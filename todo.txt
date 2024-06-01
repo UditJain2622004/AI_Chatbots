@@ -1,3 +1,2 @@
-the Bore: coming at start of response
-single chat
 error handling
+send_chat_message function

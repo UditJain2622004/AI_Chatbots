@@ -90,9 +90,11 @@ def create_bot_endpoint():
     data = request.get_json()
     data['user_id'] = session['user_id']
 
+    prompt = generate_chat_prompt({"name": data['name'], "personality": data['personality'], "description": data['description'], "scenario": data['scenario']})
+    data['history'] = [{ "role": 'system', "content": prompt }]
+
     # Insert data into MongoDB 
     bot = bot_collection.insert_one(data)
-
     return str(bot.inserted_id)
 
 @app.route('/update_bot', methods=['PATCH'])
@@ -153,7 +155,66 @@ def update_conversation_endpoint():
 
     return "Conversation Updated!"
 
-@app.route('/send_message', methods=['POST'])
+# load a conversation
+@app.route('/load_conversation', methods=['POST'])
+def load_conversation():
+    data = request.get_json()
+    conversation_id = data['conversation_id']
+    conversation = conversation_collection.find_one({"_id": ObjectId(conversation_id)})
+    if not conversation:
+        return "Conversation not found", 404
+    
+    history = conversation['history']
+    for i in range(len(history)):
+        temp = history[i]
+        print(temp)
+        if len(temp['parts'][0].split("@#$%:"))>1:
+            history[i] = {"name": temp['parts'][0].split("@#$%:")[0], "message": temp['parts'][0].split("@#$%:")[1]}
+        else:
+            history[i] = {"name": "User", "message": temp['parts'][0]}
+
+    conversation['history'] = history
+    conversation['_id'] = str(conversation['_id'])
+
+    return conversation
+
+# @app.route('/send_conv_message', methods=['POST'])
+# def send_conv_message():
+#     data = request.get_json()
+#     conversation_id, user_message = data['conversation_id'], data['user_message']
+#     def generate_responses(conversation_id, user_message):
+        
+#         conversation = conversation_collection.find_one({"_id": ObjectId(conversation_id)})
+#         if not conversation:
+#             yield json.dumps({"error": "Conversation not found"}) + "\n"
+#             return
+        
+#         temp_history = conversation['history']
+#         temp_history_gemini = conversation['history']
+#         temp_history.append({"role": "user", "content": user_message})
+#         temp_history_gemini.append({"role": "user", "parts": [user_message]})
+#         # print(temp_history)
+#         # responses = []
+
+#         bots = list(bot_collection.find({"_id": {"$in": [ObjectId(bot_id) for bot_id in conversation['bots']]}}))
+
+#         # for bot in bots:
+#         #     print(bot)
+#         for i in range(len(bots)):
+#             bot_response = generate_bot_response(bots[i], bots[:i]+bots[i+1:], temp_history,temp_history_gemini,conversation['scenario'])
+#             temp_history.append({"role": "user", "content": f'{bots[i]["name"]}: {bot_response}'})
+#             temp_history_gemini.append({"role": "user", "parts": [f'{bots[i]["name"]}: {bot_response}']})
+#             # responses.append(f"{bots[i]['name']}: {bot_response}")
+#             r = f"{bots[i]['name']}: {bot_response}"
+#             yield f"data: {json.dumps(r)}\n\n"
+
+#         # Update the conversation history in the database
+#         conversation_collection.update_one({"_id": ObjectId(conversation_id)}, {"$set": {"history": temp_history}})
+
+#     # print(temp_history)
+#     return Response(generate_responses(conversation_id, user_message), content_type='text/event-stream')
+
+@app.route('/send_conv_message', methods=['POST'])
 def send_message():
     data = request.get_json()
     conversation_id, user_message = data['conversation_id'], data['user_message']
@@ -165,8 +226,8 @@ def send_message():
             return
         
         temp_history = conversation['history']
-        temp_history.append({"role": "user", "content": user_message})
-        # print(temp_history)
+        temp_history.append({"role": "user", "parts": [f'user@#$%: {user_message}']})
+        print(temp_history)
         # responses = []
 
         bots = list(bot_collection.find({"_id": {"$in": [ObjectId(bot_id) for bot_id in conversation['bots']]}}))
@@ -174,8 +235,13 @@ def send_message():
         # for bot in bots:
         #     print(bot)
         for i in range(len(bots)):
-            bot_response = generate_bot_response(bots[i], bots[:i]+bots[i+1:], temp_history,conversation['scenario'])
-            temp_history.append({"role": "user", "content": f'{bots[i]["name"]}: {bot_response}'})
+            bot_response = generate_bot_response(bots[i], bots[:i]+bots[i+1:], temp_history,temp_history,conversation['scenario'])
+            if(bot_response.startswith("Error:")):
+                yield f"Error: {json.dumps(bot_response)}\n\n"
+                return
+            if(len(bot_response.split("@#$%:"))>1):
+                bot_response = bot_response.split("@#$%:")[1].strip()
+            temp_history.append({"role": "user", "parts": [f'{bots[i]["name"]}@#$%: {bot_response}']})
             # responses.append(f"{bots[i]['name']}: {bot_response}")
             r = f"{bots[i]['name']}: {bot_response}"
             yield f"data: {json.dumps(r)}\n\n"
@@ -186,29 +252,69 @@ def send_message():
     # print(temp_history)
     return Response(generate_responses(conversation_id, user_message), content_type='text/event-stream')
 
-def generate_bot_response(bot, other_bots, conversation_history, conversation_scenario):
+def generate_bot_response(bot, other_bots, history_openai,history_gemini, conversation_scenario):
     prompt = generate_conversation_prompt(bot, other_bots, conversation_scenario)
     # print(prompt)
-    conversation_history = deque(conversation_history)
-    conversation_history.appendleft({ "role": 'system', "content": prompt })
-    conversation_history = list(conversation_history)
-    completion = portkey.chat.completions.create(
-        messages = conversation_history,
-        model = bot['model_name']
-    )
-    print(completion.choices[0].message.content)
-    return completion.choices[0].message.content
+    # history_openai = deque(history_openai)
+    # history_openai.appendleft({ "role": 'system', "content": prompt })
+    # history_openai = list(history_openai)
+    # completion = portkey.chat.completions.create(
+    #     messages = history_openai,
+    #     model = bot['model_name']
+    # )
+    # print(completion.choices[0].message.content)
+    # return completion.choices[0].message.content
 
     # GEMINI
-    # model = genai.GenerativeModel(
-    #     model_name=bot['model_name'],
-    #     safety_settings=gemini_safety_settings,
-    #     generation_config=gemini_generation_config,
-    #     system_instruction=prompt
-    # )
-    # response = model.generate_content(conversation_history)
-    # print(response)
-    # return response.text
+    retries = 0
+    while retries < 5:
+        try:
+            model = genai.GenerativeModel(
+                model_name=bot['model_name'],
+                safety_settings=gemini_safety_settings,
+                generation_config=gemini_generation_config,
+                system_instruction=prompt
+            )
+            response = model.generate_content(history_gemini)
+            return response.text
+        
+        except Exception as e:
+            retries += 1
+            time.sleep(5)
+            # return "Error: An unexpected error occurred. Please try again later."
+    
+    return "Error: Failed to generate response after several attempts. Please try again later."
+
+
+
+@app.route('/send_chat_message', methods=['POST'])
+def send_chat_message():
+    data = request.get_json()
+    bot_id, user_message = data['bot_id'], data['user_message']
+    bot = bot_collection.find_one({"_id": ObjectId(bot_id)})
+    if not bot:
+        return "Bot not found", 404
+
+    
+    history = bot['history']
+    history.append({ "role": 'user', "content": user_message })
+    completion = portkey.chat.completions.create(
+        messages = history,
+        model = bot['model_name']
+    )
+    history.append({ "role": 'assistant', "content": completion.choices[0].message.content })
+    bot_collection.update_one({"_id": ObjectId(bot_id)}, {"$set": {"history": history}})
+    return completion.choices[0].message.content
+    # def generate_responses(bot, user_message):
+    #     prompt = generate_chat_prompt(bot)
+    #     completion = portkey.chat.completions.create(
+    #         messages = bot['history'].append({ "role": 'user', "content": user_message }),
+    #         model = bot['model_name']
+    #     )
+    #     yield json.dumps({"role": "system", "content": prompt}) + "\n"
+    #     yield json.dumps({"role": "bot", "content": completion.choices[0].message.content}) + "\n"
+
+    # return Response(generate_responses(bot, user_message), content_type='text/event-stream')
 
 # Main driver function
 if __name__ == '__main__':
