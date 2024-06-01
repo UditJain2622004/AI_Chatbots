@@ -1,0 +1,3 @@
+the Bore: coming at start of response
+single chat
+error handling

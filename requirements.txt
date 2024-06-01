@@ -1,0 +1,6 @@
+pymongo[srv]
+flask
+google-generativeai
+python-dotenv
+openai
+portkey_ai
